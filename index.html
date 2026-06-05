@@ -47,7 +47,7 @@
             background-color: var(--primary-color);
             width: 0%;
             border-radius: 5px;
-            transition: width 0.3s;
+            transition: width 0.3s ease-in-out;
         }
 
         .visual-aid {
@@ -59,9 +59,10 @@
         }
 
         .question-text {
-            font-size: 1.2rem;
-            margin-bottom: 20px;
+            font-size: 1.3rem;
+            margin-bottom: 25px;
             font-weight: bold;
+            line-height: 1.5;
         }
 
         .options-grid {
@@ -72,29 +73,38 @@
 
         .option-btn {
             padding: 15px;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             border: 2px solid #ddd;
             border-radius: 10px;
             background: white;
             cursor: pointer;
             transition: all 0.2s;
+            font-weight: 500;
         }
 
-        .option-btn:hover {
+        .option-btn:hover:not(:disabled) {
             background-color: #e3f2fd;
             border-color: var(--secondary-color);
+            transform: translateY(-2px);
+        }
+
+        .option-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.8;
         }
 
         .feedback {
             margin-top: 20px;
+            font-size: 1.2rem;
             font-weight: bold;
-            height: 24px;
+            height: 28px;
         }
 
         .score-display {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             color: var(--secondary-color);
             margin-bottom: 20px;
+            font-weight: bold;
         }
 
         .hidden { display: none; }
@@ -104,9 +114,15 @@
             color: white;
             border: none;
             padding: 15px 40px;
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             border-radius: 30px;
             cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background 0.2s;
+        }
+        
+        button#start-btn:hover, button#restart-btn:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
@@ -115,13 +131,13 @@
 <div id="game-container">
     <div id="start-screen">
         <h1>🍕 分數小勇士 🍫</h1>
-        <p>準備好接受 10 關分數大挑戰了嗎？</p>
+        <p style="font-size: 1.1rem; color: #666;">準備好接受 10 關分數大挑戰了嗎？</p>
         <button id="start-btn">開始遊戲</button>
     </div>
 
     <div id="quiz-screen" class="hidden">
         <div class="progress-bar"><div id="progress-fill"></div></div>
-        <div id="question-number">題目 1 / 10</div>
+        <div id="question-number" style="font-weight: bold; color: #666;">題目 1 / 10</div>
         <div class="visual-aid" id="visual-aid"></div>
         <div class="question-text" id="question-text"></div>
         <div class="options-grid" id="options-grid"></div>
@@ -131,102 +147,158 @@
     <div id="result-screen" class="hidden">
         <h1>挑戰完成！</h1>
         <div class="score-display" id="final-score"></div>
-        <p id="result-message"></p>
+        <p id="result-message" style="font-size: 1.2rem; margin-bottom: 30px; font-weight: bold;"></p>
         <button id="restart-btn">再玩一次</button>
     </div>
 </div>
 
 <script>
+    // --- Web Audio API 音效生成器 ---
+    let audioCtx = null;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSound(type) {
+        initAudio();
+        if (!audioCtx) return;
+
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'correct') {
+            // 答對音效：叮咚！(兩個快速上升的清脆和弦音)
+            osc.type = 'triangle'; // 三角波，聲音較柔和可愛
+            
+            // 第一個音：E5 (659Hz)
+            osc.frequency.setValueAtTime(659.25, now);
+            gainNode.gain.setValueAtTime(0.3, now);
+            
+            // 第二個音：A5 (880Hz) 0.1秒後響起
+            osc.frequency.setValueAtTime(880.00, now + 0.1);
+            
+            // 聲音漸暗消失
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        } else if (type === 'incorrect') {
+            // 答錯音效：嗶...嗚 (音調快速下墜的低音)
+            osc.type = 'sawtooth'; // 鋸齒波，帶有一點警示的鼻音
+            
+            osc.frequency.setValueAtTime(220.00, now); // A3 (220Hz)
+            gainNode.gain.setValueAtTime(0.2, now);
+            
+            // 0.3秒內快速把頻率降到 110Hz
+            osc.frequency.linearRampToValueAtTime(110.00, now + 0.3);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            
+            osc.start(now);
+            osc.stop(now + 0.3);
+        }
+    }
+
+    // --- 遊戲題目與邏輯 ---
     const questions = [
         {
-            q: "看圖識分數：圖中陰影部分佔全圖的幾分之幾？",
+            q: "看圖識分數：圖中黃色陰影部分佔全圖的幾分之幾？",
             svg: `<svg width="120" height="120">
                     <circle cx="60" cy="60" r="50" fill="none" stroke="#333" stroke-width="2"/>
                     <path d="M60,60 L60,10 A50,50 0 0,1 110,60 Z" fill="#FFD700" stroke="#333"/>
-                    <line x1="60" y1="10" x2="60" y2="110" stroke="#333"/>
-                    <line x1="10" y1="60" x2="110" y2="60" stroke="#333"/>
+                    <line x1="60" y1="10" x2="60" y2="110" stroke="#333" stroke-width="1.5"/>
+                    <line x1="10" y1="60" x2="110" y2="60" stroke="#333" stroke-width="1.5"/>
                   </svg>`,
             options: ["1/4", "1/2", "3/4", "4/1"],
             correct: 0
         },
         {
             q: "比較大小：在以下兩個分數中，哪一個比較大？",
-            svg: `<div style="display:flex; gap:20px;">
-                    <div style="text-align:center">1/2<br><svg width="60" height="60"><circle cx="30" cy="30" r="25" fill="none" stroke="#333"/><path d="M30,30 L30,5 A25,25 0 0,1 30,55 Z" fill="#90EE90"/></svg></div>
-                    <div style="text-align:center">1/5<br><svg width="60" height="60"><circle cx="30" cy="30" r="25" fill="none" stroke="#333"/><path d="M30,30 L30,5 A25,25 0 0,1 53.7,22.3 Z" fill="#FFB6C1"/></svg></div>
+            svg: `<div style="display:flex; gap:30px;">
+                    <div style="text-align:center; font-weight:bold;">1/2<br><svg width="70" height="70"><circle cx="35" cy="35" r="30" fill="none" stroke="#333" stroke-width="2"/><path d="M35,35 L35,5 A30,30 0 0,1 35,65 Z" fill="#90EE90" stroke="#333"/></svg></div>
+                    <div style="text-align:center; font-weight:bold;">1/5<br><svg width="70" height="70"><circle cx="35" cy="35" r="30" fill="none" stroke="#333" stroke-width="2"/><path d="M35,35 L35,5 A30,30 0 0,1 63.5,44.2 Z" fill="#FFB6C1" stroke="#333"/></svg></div>
                   </div>`,
             options: ["1/2", "1/5", "一樣大", "不能比較"],
             correct: 0
         },
         {
             q: "在分數 3/8 中，數字「8」稱為什麼？",
-            svg: `<div style="font-size:40px; border:2px dashed #ccc; padding:10px;">3 / <span style="color:red">8</span></div>`,
+            svg: `<div style="font-size:45px; border:2px dashed #ccc; padding:10px 25px; border-radius:10px; font-weight:bold;">3 / <span style="color:#e91e63">8</span></div>`,
             options: ["分子", "分母", "整數", "分數線"],
             correct: 1
         },
         {
             q: "看圖比較：哪一個分數代表的部分較多？",
-            svg: `<svg width="200" height="80">
-                    <rect x="10" y="10" width="150" height="20" fill="none" stroke="#333"/>
+            svg: `<svg width="220" height="80">
+                    <rect x="10" y="10" width="150" height="20" fill="none" stroke="#333" stroke-width="1.5"/>
                     <rect x="10" y="10" width="60" height="20" fill="#ADD8E6"/>
-                    <text x="170" y="25" font-size="12">2/5</text>
-                    <rect x="10" y="50" width="150" height="20" fill="none" stroke="#333"/>
+                    <text x="175" y="25" font-size="14" font-weight="bold">2/5</text>
+                    <rect x="10" y="50" width="150" height="20" fill="none" stroke="#333" stroke-width="1.5"/>
                     <rect x="10" y="50" width="120" height="20" fill="#ADD8E6"/>
-                    <text x="170" y="65" font-size="12">4/5</text>
+                    <text x="175" y="65" font-size="14" font-weight="bold">4/5</text>
                   </svg>`,
             options: ["2/5", "4/5", "一樣多", "5/5"],
             correct: 1
         },
         {
             q: "一盒巧克力有 6 顆，小明吃了 6 顆，即是吃了幾分之幾？",
-            svg: `<div style="display:grid; grid-template-columns: repeat(3, 30px); gap:5px;">
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
-                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+            svg: `<div style="display:grid; grid-template-columns: repeat(3, 35px); gap:8px;">
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
+                    <div style="width:35px; height:35px; background:#613613; border-radius:5px; box-shadow: inset 0 0 5px #000;"></div>
                   </div>`,
             options: ["1/6", "6/6", "0/6", "6"],
             correct: 1
         },
         {
             q: "下圖中，星星的 1/3 是多少個？",
-            svg: `<div style="font-size:24px;">⭐ ⭐ ⭐<br>⭐ ⭐ ⭐<br>⭐ ⭐ ⭐</div>`,
+            svg: `<div style="font-size:28px; border: 1px solid #ddd; padding: 10px 20px; border-radius: 10px; background: #fffdf0;">⭐ ⭐ ⭐<br>⭐ ⭐ ⭐<br>⭐ ⭐ ⭐</div>`,
             options: ["1個", "3個", "6個", "9個"],
             correct: 1
         },
         {
             q: "小紅有 1 米絲帶，剪去了 3/10 米，還剩多少米？",
-            svg: `<svg width="200" height="40">
-                    <rect x="10" y="15" width="180" height="10" fill="#FFC0CB"/>
-                    <rect x="10" y="15" width="54" height="10" fill="#808080"/>
-                    <text x="10" y="10" font-size="10">剪去 3/10</text>
+            svg: `<svg width="220" height="50">
+                    <rect x="10" y="20" width="200" height="15" fill="#FFC0CB" stroke="#333"/>
+                    <rect x="10" y="20" width="60" height="15" fill="#808080" stroke="#333"/>
+                    <text x="10" y="15" font-size="12" font-weight="bold">剪去 3/10 米</text>
                   </svg>`,
             options: ["3/10 米", "7/10 米", "10/10 米", "1/10 米"],
             correct: 1
         },
         {
             q: "哪組分數是按「由小到大」排列？",
-            svg: `<div style="font-size:20px;">📏 小 ➔ ➔ 大</div>`,
+            svg: `<div style="font-size:24px; font-weight:bold; color: #555;">📏 小 ➔ ➔ 大</div>`,
             options: ["1/7, 3/7, 5/7", "5/7, 3/7, 1/7", "3/7, 1/7, 5/7", "1/2, 1/3, 1/4"],
             correct: 0
         },
         {
             q: "爸爸吃了 2/8 塊披薩，小明吃了 1/8 塊，共吃了幾分之幾？",
-            svg: `<svg width="100" height="100">
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#333"/>
-                    <path d="M50,50 L50,10 A40,40 0 0,1 90,50 Z" fill="#FFA500" stroke="#333"/>
-                    <path d="M50,50 L90,50 A40,40 0 0,1 78.2,78.2 Z" fill="#FF6347" stroke="#333"/>
+            svg: `<svg width="120" height="120">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#333" stroke-width="2"/>
+                    <line x1="60" y1="10" x2="60" y2="110" stroke="#ccc" stroke-dasharray="4"/>
+                    <line x1="10" y1="60" x2="110" y2="60" stroke="#ccc" stroke-dasharray="4"/>
+                    <line x1="24.6" y1="24.6" x2="95.4" y2="95.4" stroke="#ccc" stroke-dasharray="4"/>
+                    <line x1="24.6" y1="95.4" x2="95.4" y2="24.6" stroke="#ccc" stroke-dasharray="4"/>
+                    <path d="M60,60 L60,10 A50,50 0 0,1 110,60 Z" fill="#FFA500" stroke="#333" opacity="0.8"/>
+                    <path d="M60,60 L110,60 A50,50 0 0,1 95.4,95.4 Z" fill="#FF6347" stroke="#333" opacity="0.8"/>
                   </svg>`,
             options: ["1/8", "2/8", "3/8", "3/16"],
             correct: 2
         },
         {
             q: "判斷：2/2 是否等於 1？",
-            svg: `<svg width="100" height="60">
-                    <rect x="10" y="10" width="80" height="40" fill="#DA70D6" stroke="#333"/>
-                    <line x1="50" y1="10" x2="50" y2="50" stroke="#333"/>
+            svg: `<svg width="120" height="70">
+                    <rect x="10" y="10" width="100" height="50" fill="#DA70D6" stroke="#333" stroke-width="2"/>
+                    <line x1="60" y1="10" x2="60" y2="60" stroke="#333" stroke-width="2"/>
                   </svg>`,
             options: ["是", "否"],
             correct: 0
@@ -246,6 +318,8 @@
     restartBtn.onclick = startIndex;
 
     function startIndex() {
+        // 在使用者點擊開始時初始化音頻（符合瀏覽器安全規範）
+        initAudio();
         currentQuestion = 0;
         score = 0;
         startScreen.classList.add('hidden');
@@ -257,7 +331,8 @@
     function showQuestion() {
         const q = questions[currentQuestion];
         document.getElementById('question-number').innerText = `題目 ${currentQuestion + 1} / ${questions.length}`;
-        document.getElementById('progress-fill').style.width = `${((currentQuestion) / questions.length) * 100}%`;
+        document.getElementById('progress-fill').style.width = `${((currentQuestion + 1) / questions.length) * 100}%`;
+        
         document.getElementById('visual-aid').innerHTML = q.svg;
         document.getElementById('question-text').innerText = q.q;
         document.getElementById('feedback').innerText = "";
@@ -282,9 +357,11 @@
             score++;
             feedback.innerText = "✅ 太棒了！答對了！";
             feedback.style.color = "green";
+            playSound('correct');  // 🔊 播放答對音效
         } else {
             feedback.innerText = "❌ 哎呀，再想想看！";
             feedback.style.color = "red";
+            playSound('incorrect'); // 🔊 播放答錯音效
         }
 
         // 禁用所有按鈕防止重複點擊
