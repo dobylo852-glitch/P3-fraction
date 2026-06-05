@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小學三年級：分數小勇士大挑戰</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --secondary-color: #2196F3;
+            --bg-color: #f0f9ff;
+            --card-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, "Microsoft JhengHei";
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        #game-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #eee;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        #progress-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+
+        .visual-aid {
+            margin: 20px 0;
+            min-height: 150px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .question-text {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .option-btn {
+            padding: 15px;
+            font-size: 1.1rem;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .option-btn:hover {
+            background-color: #e3f2fd;
+            border-color: var(--secondary-color);
+        }
+
+        .feedback {
+            margin-top: 20px;
+            font-weight: bold;
+            height: 24px;
+        }
+
+        .score-display {
+            font-size: 1.5rem;
+            color: var(--secondary-color);
+            margin-bottom: 20px;
+        }
+
+        .hidden { display: none; }
+
+        button#start-btn, button#restart-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="start-screen">
+        <h1>🍕 分數小勇士 🍫</h1>
+        <p>準備好接受 10 關分數大挑戰了嗎？</p>
+        <button id="start-btn">開始遊戲</button>
+    </div>
+
+    <div id="quiz-screen" class="hidden">
+        <div class="progress-bar"><div id="progress-fill"></div></div>
+        <div id="question-number">題目 1 / 10</div>
+        <div class="visual-aid" id="visual-aid"></div>
+        <div class="question-text" id="question-text"></div>
+        <div class="options-grid" id="options-grid"></div>
+        <div class="feedback" id="feedback"></div>
+    </div>
+
+    <div id="result-screen" class="hidden">
+        <h1>挑戰完成！</h1>
+        <div class="score-display" id="final-score"></div>
+        <p id="result-message"></p>
+        <button id="restart-btn">再玩一次</button>
+    </div>
+</div>
+
+<script>
+    const questions = [
+        {
+            q: "看圖識分數：圖中陰影部分佔全圖的幾分之幾？",
+            svg: `<svg width="120" height="120">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#333" stroke-width="2"/>
+                    <path d="M60,60 L60,10 A50,50 0 0,1 110,60 Z" fill="#FFD700" stroke="#333"/>
+                    <line x1="60" y1="10" x2="60" y2="110" stroke="#333"/>
+                    <line x1="10" y1="60" x2="110" y2="60" stroke="#333"/>
+                  </svg>`,
+            options: ["1/4", "1/2", "3/4", "4/1"],
+            correct: 0
+        },
+        {
+            q: "比較大小：在以下兩個分數中，哪一個比較大？",
+            svg: `<div style="display:flex; gap:20px;">
+                    <div style="text-align:center">1/2<br><svg width="60" height="60"><circle cx="30" cy="30" r="25" fill="none" stroke="#333"/><path d="M30,30 L30,5 A25,25 0 0,1 30,55 Z" fill="#90EE90"/></svg></div>
+                    <div style="text-align:center">1/5<br><svg width="60" height="60"><circle cx="30" cy="30" r="25" fill="none" stroke="#333"/><path d="M30,30 L30,5 A25,25 0 0,1 53.7,22.3 Z" fill="#FFB6C1"/></svg></div>
+                  </div>`,
+            options: ["1/2", "1/5", "一樣大", "不能比較"],
+            correct: 0
+        },
+        {
+            q: "在分數 3/8 中，數字「8」稱為什麼？",
+            svg: `<div style="font-size:40px; border:2px dashed #ccc; padding:10px;">3 / <span style="color:red">8</span></div>`,
+            options: ["分子", "分母", "整數", "分數線"],
+            correct: 1
+        },
+        {
+            q: "看圖比較：哪一個分數代表的部分較多？",
+            svg: `<svg width="200" height="80">
+                    <rect x="10" y="10" width="150" height="20" fill="none" stroke="#333"/>
+                    <rect x="10" y="10" width="60" height="20" fill="#ADD8E6"/>
+                    <text x="170" y="25" font-size="12">2/5</text>
+                    <rect x="10" y="50" width="150" height="20" fill="none" stroke="#333"/>
+                    <rect x="10" y="50" width="120" height="20" fill="#ADD8E6"/>
+                    <text x="170" y="65" font-size="12">4/5</text>
+                  </svg>`,
+            options: ["2/5", "4/5", "一樣多", "5/5"],
+            correct: 1
+        },
+        {
+            q: "一盒巧克力有 6 顆，小明吃了 6 顆，即是吃了幾分之幾？",
+            svg: `<div style="display:grid; grid-template-columns: repeat(3, 30px); gap:5px;">
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                    <div style="width:30px; height:30px; background:#613613; border-radius:5px;"></div>
+                  </div>`,
+            options: ["1/6", "6/6", "0/6", "6"],
+            correct: 1
+        },
+        {
+            q: "下圖中，星星的 1/3 是多少個？",
+            svg: `<div style="font-size:24px;">⭐ ⭐ ⭐<br>⭐ ⭐ ⭐<br>⭐ ⭐ ⭐</div>`,
+            options: ["1個", "3個", "6個", "9個"],
+            correct: 1
+        },
+        {
+            q: "小紅有 1 米絲帶，剪去了 3/10 米，還剩多少米？",
+            svg: `<svg width="200" height="40">
+                    <rect x="10" y="15" width="180" height="10" fill="#FFC0CB"/>
+                    <rect x="10" y="15" width="54" height="10" fill="#808080"/>
+                    <text x="10" y="10" font-size="10">剪去 3/10</text>
+                  </svg>`,
+            options: ["3/10 米", "7/10 米", "10/10 米", "1/10 米"],
+            correct: 1
+        },
+        {
+            q: "哪組分數是按「由小到大」排列？",
+            svg: `<div style="font-size:20px;">📏 小 ➔ ➔ 大</div>`,
+            options: ["1/7, 3/7, 5/7", "5/7, 3/7, 1/7", "3/7, 1/7, 5/7", "1/2, 1/3, 1/4"],
+            correct: 0
+        },
+        {
+            q: "爸爸吃了 2/8 塊披薩，小明吃了 1/8 塊，共吃了幾分之幾？",
+            svg: `<svg width="100" height="100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#333"/>
+                    <path d="M50,50 L50,10 A40,40 0 0,1 90,50 Z" fill="#FFA500" stroke="#333"/>
+                    <path d="M50,50 L90,50 A40,40 0 0,1 78.2,78.2 Z" fill="#FF6347" stroke="#333"/>
+                  </svg>`,
+            options: ["1/8", "2/8", "3/8", "3/16"],
+            correct: 2
+        },
+        {
+            q: "判斷：2/2 是否等於 1？",
+            svg: `<svg width="100" height="60">
+                    <rect x="10" y="10" width="80" height="40" fill="#DA70D6" stroke="#333"/>
+                    <line x1="50" y1="10" x2="50" y2="50" stroke="#333"/>
+                  </svg>`,
+            options: ["是", "否"],
+            correct: 0
+        }
+    ];
+
+    let currentQuestion = 0;
+    let score = 0;
+
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const startScreen = document.getElementById('start-screen');
+    const quizScreen = document.getElementById('quiz-screen');
+    const resultScreen = document.getElementById('result-screen');
+    
+    startBtn.onclick = startIndex;
+    restartBtn.onclick = startIndex;
+
+    function startIndex() {
+        currentQuestion = 0;
+        score = 0;
+        startScreen.classList.add('hidden');
+        resultScreen.classList.add('hidden');
+        quizScreen.classList.remove('hidden');
+        showQuestion();
+    }
+
+    function showQuestion() {
+        const q = questions[currentQuestion];
+        document.getElementById('question-number').innerText = `題目 ${currentQuestion + 1} / ${questions.length}`;
+        document.getElementById('progress-fill').style.width = `${((currentQuestion) / questions.length) * 100}%`;
+        document.getElementById('visual-aid').innerHTML = q.svg;
+        document.getElementById('question-text').innerText = q.q;
+        document.getElementById('feedback').innerText = "";
+        
+        const optionsGrid = document.getElementById('options-grid');
+        optionsGrid.innerHTML = '';
+        
+        q.options.forEach((opt, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => checkAnswer(index);
+            optionsGrid.appendChild(btn);
+        });
+    }
+
+    function checkAnswer(choice) {
+        const isCorrect = choice === questions[currentQuestion].correct;
+        const feedback = document.getElementById('feedback');
+        
+        if (isCorrect) {
+            score++;
+            feedback.innerText = "✅ 太棒了！答對了！";
+            feedback.style.color = "green";
+        } else {
+            feedback.innerText = "❌ 哎呀，再想想看！";
+            feedback.style.color = "red";
+        }
+
+        // 禁用所有按鈕防止重複點擊
+        const buttons = document.querySelectorAll('.option-btn');
+        buttons.forEach(b => b.disabled = true);
+
+        setTimeout(() => {
+            currentQuestion++;
+            if (currentQuestion < questions.length) {
+                showQuestion();
+            } else {
+                showResult();
+            }
+        }, 1200);
+    }
+
+    function showResult() {
+        quizScreen.classList.add('hidden');
+        resultScreen.classList.remove('hidden');
+        document.getElementById('final-score').innerText = `你的得分：${score} / ${questions.length}`;
+        
+        let msg = "";
+        if(score === 10) msg = "你是滿分的分數大師！🏆";
+        else if(score >= 7) msg = "表現不錯，你對分數很有感覺喔！🌟";
+        else msg = "繼續加油，多練習會變得更強！💪";
+        document.getElementById('result-message').innerText = msg;
+    }
+</script>
+
+</body>
+</html>
